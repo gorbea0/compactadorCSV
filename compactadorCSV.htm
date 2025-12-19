@@ -1,0 +1,59 @@
+﻿<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>CSV Cleaner</title>
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<style>
+  body { font-family: system-ui, sans-serif; padding: 20px; }
+</style>
+</head>
+<body>
+
+<h1>CSV Cleaner (sin BOM, sin comillas, sin espacios)</h1>
+
+<input type="file" id="csvInput" accept=".csv">
+<br><br>
+<button onclick="cleanCSV()">Convertir y descargar</button>
+
+<script>
+function cleanCSV(){
+  const file = document.getElementById("csvInput").files[0];
+  if (!file) return alert("Selecciona un CSV");
+
+  Papa.parse(file, {
+    header: true,
+    skipEmptyLines: true,
+    complete: (res) => {
+      const fields = res.meta.fields || [];
+      const rows = res.data || [];
+
+      const cleanRows = rows.map(row => {
+        const out = {};
+        fields.forEach(f => {
+          let v = row[f];
+          if (v == null) v = "";
+          v = String(v).trim();
+          out[f] = v;
+        });
+        return out;
+      });
+
+      const csv = Papa.unparse(cleanRows, {
+        quotes: false,
+        delimiter: ",",
+        newline: "\n"
+      });
+
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = file.name.replace(".CSV", "_CLEAN.csv");
+      a.click();
+    }
+  });
+}
+</script>
+
+</body>
+</html>
