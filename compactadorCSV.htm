@@ -1,59 +1,117 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="UTF-8">
-<title>CSV Cleaner</title>
-<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
-<style>
-  body { font-family: system-ui, sans-serif; padding: 20px; }
-</style>
+  <meta charset="UTF-8">
+  <title>CSV Cleaner</title>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <style>
+    body { font-family: system-ui, sans-serif; padding: 20px; }
+    label { display:inline-block; margin-right: 10px; }
+    select { padding: 4px; }
+  </style>
 </head>
 <body>
 
 <h1>CSV Cleaner (sin BOM, sin comillas, sin espacios)</h1>
 
-<input type="file" id="csvInput" accept=".csv">
+<input type="file" id="csvInput" accept=".csv,.CSV">
+<br><br>
+
+<label for="encodingSelect">Codificación de entrada:</label>
+<select id="encodingSelect">
+  <option value="auto" selected>Auto (recomendado)</option>
+  <option value="utf-8">UTF-8</option>
+  <option value="windows-1252">Windows-1252 (Excel/Windows)</option>
+  <option value="iso-8859-1">ISO-8859-1</option>
+</select>
+
+<label style="margin-left:14px;">
+  <input type="checkbox" id="addBOM">
+  Añadir BOM (mejor para Excel)
+</label>
+
 <br><br>
 <button onclick="cleanCSV()">Convertir y descargar</button>
 
 <script>
-function cleanCSV(){
+async function readFileAsTextWithEncoding(file, encoding) {
+  // Leemos como ArrayBuffer y decodificamos nosotros para controlar la codificación
+  const buf = await file.arrayBuffer();
+  const decoder = new TextDecoder(encoding, { fatal: false });
+  return decoder.decode(buf);
+}
+
+function looksMisdecoded(text) {
+  // Si hay muchos caracteres de reemplazo, casi seguro que la codificación es incorrecta
+  const repl = (text.match(/\uFFFD/g) || []).length;
+  return repl > 0; // puedes endurecerlo si quieres: repl > 2, etc.
+}
+
+async function cleanCSV(){
   const file = document.getElementById("csvInput").files[0];
   if (!file) return alert("Selecciona un CSV");
 
-  Papa.parse(file, {
-    header: true,
-    skipEmptyLines: true,
-    complete: (res) => {
-      const fields = res.meta.fields || [];
-      const rows = res.data || [];
+  const encSel = document.getElementById("encodingSelect").value;
+  const addBOM = document.getElementById("addBOM").checked;
 
-      const cleanRows = rows.map(row => {
-        const out = {};
-        fields.forEach(f => {
-          let v = row[f];
-          if (v == null) v = "";
-          v = String(v).trim();
-          out[f] = v;
-        });
-        return out;
-      });
+  let text;
 
-      const csv = Papa.unparse(cleanRows, {
-        quotes: false,
-        delimiter: ",",
-        newline: "\n"
-      });
-
-      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = file.name.replace(".CSV", "_CLEAN.csv");
-      a.click();
+  if (encSel === "auto") {
+    // 1) Intento UTF-8
+    const tUtf8 = await readFileAsTextWithEncoding(file, "utf-8");
+    // 2) Si hay �, probablemente venía en Windows-1252
+    if (looksMisdecoded(tUtf8)) {
+      text = await readFileAsTextWithEncoding(file, "windows-1252");
+    } else {
+      text = tUtf8;
     }
+  } else {
+    text = await readFileAsTextWithEncoding(file, encSel);
+  }
+
+  // Parseamos desde texto (no desde File) para mantener nuestra decodificación
+  const res = Papa.parse(text, {
+    header: true,
+    skipEmptyLines: true
   });
+
+  if (res.errors && res.errors.length) {
+    console.warn("Errores de parseo:", res.errors);
+    // No abortamos necesariamente; depende del CSV
+  }
+
+  const fields = res.meta.fields || [];
+  const rows = res.data || [];
+
+  const cleanRows = rows.map(row => {
+    const out = {};
+    fields.forEach(f => {
+      let v = row[f];
+      if (v == null) v = "";
+      v = String(v).trim();
+      out[f] = v;
+    });
+    return out;
+  });
+
+  const csv = Papa.unparse(cleanRows, {
+    quotes: false,
+    delimiter: ",",
+    newline: "\n"
+  });
+
+  // Salida UTF-8 (opcionalmente con BOM)
+  const bom = addBOM ? "\uFEFF" : "";
+  const blob = new Blob([bom + csv], { type: "text/csv;charset=utf-8" });
+
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  const baseName = file.name.replace(/\.csv$/i, "");
+  a.download = baseName + "_CLEAN.csv";
+  a.click();
 }
 </script>
 
 </body>
 </html>
+
