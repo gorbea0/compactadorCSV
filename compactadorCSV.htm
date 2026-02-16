@@ -107,11 +107,12 @@ async function cleanCSV(){
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
   const baseName = file.name.replace(/\.csv$/i, "");
-  a.download = baseName + "_CLEAN.csv";
+  a.download = baseName + "_CLEAN.CSV";
   a.click();
 }
 </script>
 
 </body>
 </html>
+
 
