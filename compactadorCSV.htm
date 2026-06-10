@@ -47,6 +47,66 @@ function looksMisdecoded(text) {
   return repl > 0; // puedes endurecerlo si quieres: repl > 2, etc.
 }
 
+
+function pad2(n) {
+  return String(n).padStart(2, "0");
+}
+
+function normalizeSpanishDate(value) {
+  // Normaliza fechas tipo:
+  // 15-DEC-2025 07:36:06 -> 15/12/2025 07:36:06
+  // 15-12-2025 07:36:06  -> 15/12/2025 07:36:06
+  // 15-ENE-2025, 15-FEB-2025, etc.
+  const raw = String(value || "").trim();
+  if (!raw) return raw;
+
+  const months = {
+    "1": 1, "01": 1, "JAN": 1, "ENE": 1, "ENERO": 1,
+    "2": 2, "02": 2, "FEB": 2, "FEBRERO": 2,
+    "3": 3, "03": 3, "MAR": 3, "MARZO": 3,
+    "4": 4, "04": 4, "APR": 4, "ABR": 4, "ABRIL": 4,
+    "5": 5, "05": 5, "MAY": 5, "MAYO": 5,
+    "6": 6, "06": 6, "JUN": 6, "JUNIO": 6,
+    "7": 7, "07": 7, "JUL": 7, "JULIO": 7,
+    "8": 8, "08": 8, "AUG": 8, "AGO": 8, "AGOSTO": 8,
+    "9": 9, "09": 9, "SEP": 9, "SEPT": 9, "SEPTIEMBRE": 9,
+    "10": 10, "OCT": 10, "OCTUBRE": 10,
+    "11": 11, "NOV": 11, "NOVIEMBRE": 11,
+    "12": 12, "DEC": 12, "DIC": 12, "DICIEMBRE": 12
+  };
+
+  const normalized = raw
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase();
+
+  const m = normalized.match(/^(\d{1,2})[\/-](\d{1,2}|[A-Z]+)[\/-](\d{2,4})(?:[ T]+(\d{1,2}:\d{2}(?::\d{2})?))?$/);
+  if (!m) return raw;
+
+  let [, d, mon, y, time] = m;
+  const monthNum = months[mon];
+  if (!monthNum) return raw;
+
+  if (y.length === 2) y = Number(y) >= 70 ? "19" + y : "20" + y;
+
+  // Validación simple para evitar convertir textos que no son fechas reales.
+  const dayNum = Number(d);
+  const yearNum = Number(y);
+  const dt = new Date(yearNum, monthNum - 1, dayNum);
+  if (dt.getFullYear() !== yearNum || dt.getMonth() !== monthNum - 1 || dt.getDate() !== dayNum) return raw;
+
+  return `${pad2(dayNum)}/${pad2(monthNum)}/${y}${time ? " " + time : ""}`;
+}
+
+function shouldNormalizeDateField(fieldName, value) {
+  // Aplica siempre a columnas con "date"/"fecha" y también a cualquier valor
+  // que claramente parezca fecha, por si el CSV trae nombres de columna distintos.
+  const f = String(fieldName || "").toLowerCase();
+  const looksLikeDateColumn = f.includes("date") || f.includes("fecha");
+  const looksLikeDateValue = /^\s*\d{1,2}[\/-](\d{1,2}|[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]+)[\/-]\d{2,4}/.test(String(value || ""));
+  return looksLikeDateColumn || looksLikeDateValue;
+}
+
 async function cleanCSV(){
   const file = document.getElementById("csvInput").files[0];
   if (!file) return alert("Selecciona un CSV");
@@ -89,6 +149,9 @@ async function cleanCSV(){
       let v = row[f];
       if (v == null) v = "";
       v = String(v).trim();
+      if (shouldNormalizeDateField(f, v)) {
+        v = normalizeSpanishDate(v);
+      }
       out[f] = v;
     });
     return out;
@@ -114,5 +177,8 @@ async function cleanCSV(){
 
 </body>
 </html>
+
+
+
 
 
